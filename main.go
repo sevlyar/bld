@@ -67,7 +67,8 @@ func main() {
 	conf.Defs.set("..", root)
 	conf.Defs.bootstrap()
 
-	cache := ReadCache("gomakecache.json")
+	cacheFile := "bldcache.json"
+	cache := ReadCache(cacheFile)
 
 	for _, item := range conf.Ops {
 		fmt.Println(item.Descr)
@@ -76,5 +77,5 @@ func main() {
 		item.Exec()
 	}
 
-	cache.Write("gomakecache.json")
+	cache.Write(cacheFile)
 }
