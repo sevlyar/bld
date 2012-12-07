@@ -1,88 +1,74 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
+	"io/ioutil"
+	"log"
 	"os"
-	//"path/filepath"
+	"path/filepath"
 )
 
-// Конфигурация - глобальные настроки.
-type Config struct {
-	// Максимальное количество одновременно выполняемых процессов.
-	Parallel int `json:"parallel"`
-	// Список переменных конфигурации, применяются в опциях процесса.
-	Defs defines `json:"defs"`
-	// Цепочка процессов (Этапов) обработки.
-	Chain []ChainItem `json:"chain"`
+var (
+	verbose bool
+)
+
+func init() {
+	const (
+		usage_verbose = "enable verbose output"
+	)
+	flag.BoolVar(&verbose, "-verbose", false, usage_verbose)
+	flag.BoolVar(&verbose, "v", false, usage_verbose)
 }
 
-func fatal(a ...interface{}) {
-	fmt.Println(a...)
-	os.Exit(1)
-}
-
-func check(msg string, err error) {
-	if err != nil {
-		fmt.Println(msg, err)
-		os.Exit(1)
-	}
-}
-
+// TODO: организовать хранение в репозитарии и обозначить направление развития
+// TODO: сделать проверку зависимостей и построение с учетом зависимостей
+// TODO: реализовать макрос ${#}
 func main() {
-	// чтение опций
-	// обработка каждого элемента цепочки:
-	// подстановка глобальных переменных
-	// поиск подходящих файлов
-	// исключение неизменившихся + обновление кэша
-	// для каждого найденого
-	// инстанцирование имени файла
-	// вызов инструмента
-
-	// в текущей директории находится конфиг и кеш, она является целевой
-	// root проекта указывается в параметре
-
-	// чтение конфига
-	conf := readConf()
-
-	// получение целевой директории и директории проекта
-	targetDir := "./"
+	defer exit()
 
 	flag.Parse()
-	rootDir := flag.Arg(0)
 
-	setTargeDir(targetDir)
-	setRootDir(rootDir)
+	if verbose {
+		log.SetFlags(log.Lmicroseconds)
+	} else {
+		log.SetOutput(ioutil.Discard)
+	}
 
-	// разворачивание макроопределений
+	scenario := "build.json"
+	root := ".."
+	if flag.NArg() > 0 {
+		scenario = flag.Arg(0)
+		if len(filepath.Ext(scenario)) == 0 {
+			scenario += ".json"
+		}
+		if flag.NArg() > 1 {
+			root = flag.Arg(1)
+		}
+	}
+
+	if wd, err := os.Getwd(); err != nil {
+		panic(err)
+	} else {
+		log.Println("work dir: ", wd)
+	}
+	log.Println("root dir: ", root)
+	log.Println("scenario: ", scenario)
+
+	conf := loadConfigs(scenario, root)
+
+	conf.Defs.set(".", ".")
+	conf.Defs.set("..", root)
 	conf.Defs.bootstrap()
 
-	//fmt.Println(conf.Defs)
-
-	// чтение кеша
 	cache := ReadCache("gomakecache.json")
 
-	// обработка цепочки
-	for _, item := range conf.Chain {
+	for _, item := range conf.Ops {
 		fmt.Println(item.Descr)
-		item.SearchFiles(rootDir, targetDir, cache, conf.Defs)
+		item.SearchFiles(root, ".", cache, conf.Defs)
 		item.CacheOpts(conf.Defs)
 		item.Exec()
 	}
 
-	// запись кеша
 	cache.Write("gomakecache.json")
-}
-
-func readConf() *Config {
-	f, err := os.Open("gomake.json")
-	check("Unable open config file:", err)
-	defer f.Close()
-
-	conf := new(Config)
-	err = json.NewDecoder(f).Decode(conf)
-	check("Wrong config:", err)
-
-	return conf
 }
