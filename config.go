@@ -10,9 +10,9 @@ import (
 
 type Config struct {
 	path    string       `json:"-"`
-	Combine []string     `json:"combine"`
-	Defs    defines      `json:"defs"`
-	Ops     []*ChainItem `json:"ops"`
+	Combine []string     `json:"combine,omitempty"`
+	Defs    defines      `json:"defs,omitempty"`
+	Ops     []*Operation `json:"ops,omitempty"`
 }
 
 // loadConfigs загружает конфигурацию: читает указанный 
