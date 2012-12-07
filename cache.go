@@ -50,6 +50,8 @@ func (item *FileStateSnap) Sync(dirs []string) {
 
 // Чтение кэша из файла.
 func ReadCache(path string) fileCache {
+	defer rethrow("unable load cache %s", path)
+
 	log.Printf("read cache %s\n", path)
 
 	cache := make(map[string]*FileStateSnap)
@@ -59,10 +61,14 @@ func ReadCache(path string) fileCache {
 		defer f.Close()
 
 		err = json.NewDecoder(f).Decode(&cache)
-		check("Internal error:", err)
+		if err != nil {
+			panic(err)
+		}
 	} else {
 		if !os.IsNotExist(err) {
-			check("Internal error:", err)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 
@@ -71,16 +77,25 @@ func ReadCache(path string) fileCache {
 
 // Запись кэша в файл.
 func (cache *fileCache) Write(path string) {
+	defer rethrow("unable store cache %s", path)
 	log.Printf("write cache %s\n", path)
 
 	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0644)
-	check("Internal error:", err)
+	if err != nil {
+		panic(err)
+	}
+
 	defer f.Close()
 
 	b, err := json.MarshalIndent(&cache, "", "\t")
-	check("Internal error:", err)
+	if err != nil {
+		panic(err)
+	}
+
 	_, err = f.Write(b)
-	check("Internal error:", err)
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Проверяет менялся ли файл или его зависимости, попутно добавляет или
@@ -143,13 +158,19 @@ func getFileInfo(path string) os.FileInfo {
 }
 
 func getFileHash(path string) []byte {
+	defer rethrow("unable compute hash of file", path)
+
 	f, err := os.OpenFile(path, os.O_RDONLY, 0644)
-	check("Internal error:", err)
+	if err != nil {
+		panic(err)
+	}
 	defer f.Close()
 
 	Hash := md5.New()
 	_, err = io.Copy(Hash, f)
-	check("Internal error:", err)
+	if err != nil {
+		panic(err)
+	}
 
 	return Hash.Sum(nil)
 }
