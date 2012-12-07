@@ -14,7 +14,7 @@ type Operation struct {
 	Descr string   `json:"descr"`
 	Deps  []string `json:"deps"`
 
-	Sources string   `json:"sources"`
+	Sources []string `json:"sources"`
 	Dirs    []string `json:"dirs"`
 
 	Group bool `json:"group"`
@@ -65,18 +65,20 @@ func execCommand(cmd string, opts []string) {
 
 // Составляет список обрабатываемых файлов.
 // dirs, root и targ должны содержать полные пути.
-func (ci *Operation) SearchFiles(root, targ string, cache fileCache, defs defines) {
+func (op *Operation) SearchFiles(root, targ string, cache fileCache, defs defines) {
 
-	if len(ci.Dirs) == 0 {
-		ci.Dirs = []string{targ}
+	if len(op.Dirs) == 0 {
+		op.Dirs = []string{targ}
 	} else {
-		ci.Dirs = defs.substituteUserDefs(ci.Dirs)
+		op.Dirs = defs.substituteUserDefs(op.Dirs)
 	}
+	
+	op.Sources = defs.substituteUserDefs(op.Sources)
 
 	// построение списка файлов
 	changed := false
-	ci.targetFiles = make([]string, 0, 32)
-	for _, dir := range ci.Dirs {
+	op.targetFiles = make([]string, 0, 32)
+	for _, dir := range op.Dirs {
 
 		f, err := os.Open(dir)
 		if err != nil {
@@ -94,42 +96,47 @@ func (ci *Operation) SearchFiles(root, targ string, cache fileCache, defs define
 			name := filepath.Join(dir, fi.Name())
 
 			// проверка совпадения имени
-			if isNameMatch(name, ci.Sources) {
+			if isNameMatch(name, op.Sources) {
 				// проверка изменен ли файл
-				if ci.Group {
-					if cache.CheckSource(name, ci.Dirs) {
+				if op.Group {
+					if cache.CheckSource(name, op.Dirs) {
 						changed = true
 					}
-					ci.targetFiles = append(ci.targetFiles, name)
+					op.targetFiles = append(op.targetFiles, name)
 				} else {
-					if cache.CheckSource(name, ci.Dirs) {
-						ci.targetFiles = append(ci.targetFiles, name)
+					if cache.CheckSource(name, op.Dirs) {
+						op.targetFiles = append(op.targetFiles, name)
 					}
 				}
 			}
 		}
 	}
-	if ci.Group && !changed {
-		ci.targetFiles = []string{}
+	if op.Group && !changed {
+		op.targetFiles = []string{}
 	}
 }
 
-// Возвращает true, если имя совпадает с паттерном
-func isNameMatch(name string, exts string) bool {
-	match, err := regexp.MatchString(exts, name)
-	if err != nil {
-		panic(err)
+// Возвращает true, если имя совпадает с одним из паттернов
+func isNameMatch(name string, pats []string) bool {
+	for _, pat := range pats {
+		match, err := regexp.MatchString(pat, name)
+		if err != nil {
+			panic(err)
+		}
+		if match {
+			return true
+		}
 	}
-	return match
+	return false
 }
 
 // Кэширует опции в поле cachedOpt,
 // подставляя указанные переменные.
-func (ci *Operation) CacheOpts(defs defines) {
-	ci.cachedOpts = defs.substituteUserDefs(ci.Args)
+func (op *Operation) CacheOpts(defs defines) {
+	op.cachedOpts = defs.substituteUserDefs(op.Args)
 }
 
-func (ci *Operation) Out() {
+func (op *Operation) Out() {
 	printArr := func(descr string, a []string) {
 		fmt.Println(descr)
 		for _, s := range a {
@@ -139,9 +146,9 @@ func (ci *Operation) Out() {
 		fmt.Println()
 	}
 
-	printArr("SOURCE_DIRS:", ci.Dirs)
-	printArr("TARGET_FILES:", ci.targetFiles)
+	printArr("SOURCE_DIRS:", op.Dirs)
+	printArr("TARGET_FILES:", op.targetFiles)
 
-	printArr("OPTIONS:", ci.Args)
-	printArr("CACHED_OPTS:", ci.cachedOpts)
+	printArr("OPTIONS:", op.Args)
+	printArr("CACHED_OPTS:", op.cachedOpts)
 }
