@@ -2,54 +2,25 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"regexp"
+	//"regexp"
 )
 
-// Описатель подключений внешних файлов для построения зависимостей
-type IncludesDescr struct {
-	// Директории, в которых ищутся подключаемые файлы
-	FileDirs []string `json:"file-dirs"`
-	// Регулярное выражение, описывающее подключение, должно иметь один
-	// параметр, совпадающий с именем подключаемого файла:
-	// `#include [<|"]([a-zA-Z0-9\/\\\._\-]+)[>|"]`
-	RegExpStr string `json:"reg-exp"`
+type Operation struct {
+	Name  string   `json:"name"`
+	Descr string   `json:"descr"`
+	Deps  []string `json:"deps"`
 
-	regExp *regexp.Regexp
-}
+	Sources string   `json:"sources"`
+	Dirs    []string `json:"dirs"`
 
-func (inc *IncludesDescr) getRegExp() *regexp.Regexp {
-	defer rethrow("Wrong format includes description")
-
-	if inc.regExp == nil {
-		inc.regExp = regexp.MustCompile(inc.RegExpStr)
-	}
-
-	return inc.regExp
-}
-
-// Этап обработки - указывает действие, применяемое к группе файлов одного типа.
-type ChainItem struct {
-	Descr string `json:"descr"`
-	// Перекрывает глобальные настроки директорий-источников.
-	// Если список пустой, то файлы ищутся в целевой директории.
-	SourceDirs []string `json:"source-dirs"`
-	// Описание подключений для установления зависимостей между файлами
-	Includes *IncludesDescr `json:"includes"`
-	// Подставлять в имя сразу все файлы (tool вызывается один раз)
 	Group bool `json:"group"`
-	// Список расширений обрабатываемых файлов.
-	FileExts []string `json:"file-exts"`
-	// Инструмент, вызывается для каждого подходящего файла.
-	Tool string `json:"tool"`
-	// Список опций, в каждом элементе может быть указана одна переменная,
-	// тогда при добавлении аргументов к вызову инструмента произойдет
-	// инстанцировние шаблона аргумента столько раз, сколько элементов указано 
-	// в значении переменной. {} указывает, что нужно подставить имя 
-	// обрабатываемого файла.
-	Opts []string `json:"options"`
+
+	Tool string   `json:"tool"`
+	Args []string `json:"args"`
 
 	// Хранит закешированные опции, с подстановленными переменными, кроме {}.
 	cachedOpts []string
@@ -57,79 +28,81 @@ type ChainItem struct {
 	targetFiles []string
 }
 
-func (ci *ChainItem) Exec() {
+// выполняет операцию
+func (op *Operation) Exec() {
+	log.Printf("exec %s for %v with %v\n",
+		op.Tool, op.targetFiles, op.cachedOpts)
 
-	if ci.Group {
-		if len(ci.targetFiles) == 0 {
+	if op.Group {
+		if len(op.targetFiles) == 0 {
 			return
 		}
 
-		setCurrentFiles(ci.targetFiles)
-		opts := substituteEmbDefs(ci.cachedOpts, false)
-		ci.execTool(opts)
+		opts := substituteEmbDefs(op.cachedOpts, op.targetFiles)
+
+		execCommand(op.Tool, opts)
 		return
 	}
 
-	for _, file := range ci.targetFiles {
-
-		setCurrentFiles([]string{file})
-		opts := substituteEmbDefs(ci.cachedOpts, false)
-		ci.execTool(opts)
+	for _, file := range op.targetFiles {
+		opts := substituteEmbDefs(op.cachedOpts, []string{file})
+		execCommand(op.Tool, opts)
 	}
 }
 
-func (ci *ChainItem) execTool(opts []string) {
-	cmd := exec.Command(ci.Tool, opts...)
+// execCommand вызывает утилиту с указанными параметрами
+func execCommand(cmd string, opts []string) {
+	defer rethrow("command %s exec", cmd)
 
-	out, err := cmd.CombinedOutput()
-
+	run := exec.Command(cmd, opts...)
+	out, err := run.CombinedOutput()
 	os.Stdout.Write(out)
-	check("Tool return error:", err)
+
+	if err != nil {
+		panic(err)
+	}
 }
 
 // Составляет список обрабатываемых файлов.
 // dirs, root и targ должны содержать полные пути.
-func (ci *ChainItem) SearchFiles(root, targ string, cache fileCache, defs defines) {
+func (ci *Operation) SearchFiles(root, targ string, cache fileCache, defs defines) {
 
-	if len(ci.SourceDirs) == 0 {
-		ci.SourceDirs = []string{targ}
+	if len(ci.Dirs) == 0 {
+		ci.Dirs = []string{targ}
 	} else {
-		// подстановка макроопределений в пути
-		ci.SourceDirs = defs.substituteUserDefs(ci.SourceDirs)
-		ci.SourceDirs = substituteEmbDefs(ci.SourceDirs, true)
-	}
-
-	if ci.Includes != nil {
-		ci.Includes.FileDirs = defs.substituteUserDefs(ci.Includes.FileDirs)
-		ci.Includes.FileDirs = substituteEmbDefs(ci.Includes.FileDirs, true)
+		ci.Dirs = defs.substituteUserDefs(ci.Dirs)
 	}
 
 	// построение списка файлов
 	changed := false
 	ci.targetFiles = make([]string, 0, 32)
-	for _, dir := range ci.SourceDirs {
+	for _, dir := range ci.Dirs {
 
 		f, err := os.Open(dir)
-		check("Source dir not found:", err)
+		if err != nil {
+			throw("Source dir not found: %s", err)
+		}
 		defer f.Close()
 
 		finfs, err := f.Readdir(-1)
-		check("Internal error:", err)
+		if err != nil {
+			panic(err)
+		}
 
 		for _, fi := range finfs {
 
 			name := filepath.Join(dir, fi.Name())
 
 			// проверка совпадения имени
-			if isNameMatch(name, ci.FileExts) {
+			if isNameMatch(name, ci.Sources) {
 				// проверка изменен ли файл
 				if ci.Group {
-					if cache.CheckSource(name, ci.Includes.FileDirs) {
+					if cache.CheckSource(name, ci.Dirs) {
 						changed = true
 					}
 					ci.targetFiles = append(ci.targetFiles, name)
 				} else {
-					if cache.CheckSource(name, ci.Includes.FileDirs) {
+					if cache.CheckSource(name, ci.Dirs) {
 						ci.targetFiles = append(ci.targetFiles, name)
 					}
 				}
@@ -142,23 +115,17 @@ func (ci *ChainItem) SearchFiles(root, targ string, cache fileCache, defs define
 }
 
 // Возвращает true, если имя совпадает с паттерном
-func isNameMatch(name string, exts []string) bool {
-	for _, ext := range exts {
-		if filepath.Ext(name) == ext {
-			return true
-		}
-	}
-	return false
+func isNameMatch(name string, exts string) bool {
+	return filepath.Ext(name) == exts
 }
 
 // Кэширует опции в поле cachedOpt,
 // подставляя указанные переменные.
-func (ci *ChainItem) CacheOpts(defs defines) {
-	ci.cachedOpts = defs.substituteUserDefs(ci.Opts)
-	ci.cachedOpts = substituteEmbDefs(ci.cachedOpts, true)
+func (ci *Operation) CacheOpts(defs defines) {
+	ci.cachedOpts = defs.substituteUserDefs(ci.Args)
 }
 
-func (ci *ChainItem) Out() {
+func (ci *Operation) Out() {
 	printArr := func(descr string, a []string) {
 		fmt.Println(descr)
 		for _, s := range a {
@@ -168,9 +135,9 @@ func (ci *ChainItem) Out() {
 		fmt.Println()
 	}
 
-	printArr("SOURCE_DIRS:", ci.SourceDirs)
+	printArr("SOURCE_DIRS:", ci.Dirs)
 	printArr("TARGET_FILES:", ci.targetFiles)
 
-	printArr("OPTIONS:", ci.Opts)
+	printArr("OPTIONS:", ci.Args)
 	printArr("CACHED_OPTS:", ci.cachedOpts)
 }
