@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	//"regexp"
+	"regexp"
 )
 
 type Operation struct {
@@ -116,7 +116,11 @@ func (ci *Operation) SearchFiles(root, targ string, cache fileCache, defs define
 
 // Возвращает true, если имя совпадает с паттерном
 func isNameMatch(name string, exts string) bool {
-	return filepath.Ext(name) == exts
+	match, err := regexp.MatchString(exts, name)
+	if err != nil {
+		panic(err)
+	}
+	return match
 }
 
 // Кэширует опции в поле cachedOpt,
