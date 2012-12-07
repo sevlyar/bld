@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -10,6 +11,7 @@ import (
 type defines map[string][]string
 
 var (
+	envMacroRegexp = regexp.MustCompile(`\$\{.*?\}`)
 	macroRegexp    = regexp.MustCompile(`\$\(\/?[^@]*?\)`)
 	embMacroRegexp = regexp.MustCompile(`\$\(\/?@\)`)
 )
@@ -54,8 +56,9 @@ func (def defines) substituteDefs(input []string, r *regexp.Regexp) []string {
 // Делает подстановки определений на места макровызовов.
 // input должен содержать одинаковые макровызовы!
 // FIXME: сделать проверку зацикливания.
+// FIXME: сделать input string
 func (def defines) substitute(input []string, re *regexp.Regexp) []string {
-	cached := input
+	cached := input[0]
 
 	for {
 		// выходные значения на каждой итерации
@@ -66,10 +69,14 @@ func (def defines) substitute(input []string, re *regexp.Regexp) []string {
 			macroCall := re.FindString(str)
 
 			if len(macroCall) == 0 {
-				result = append(result, str)
+				// expand enveronment				
+				for i, _ := range input {
+					input[i] = envMacroRegexp.ReplaceAllStringFunc(
+						input[i], getEnvVar)
+				}
 
-				if cached[0] != input[0] {
-					log.Printf("macro: %s -> %v", cached, input)
+				if cached != input[0] {
+					log.Printf("macro: [%s] -> %v", cached, input)
 				}
 
 				return input
@@ -116,4 +123,8 @@ func basePathModif(v []string) []string {
 		short[i] = filepath.Base(v[i])
 	}
 	return short
+}
+
+func getEnvVar(macro string) string {
+	return os.Getenv(macro[2 : len(macro)-1])
 }
