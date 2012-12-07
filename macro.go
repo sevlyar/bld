@@ -10,8 +10,8 @@ import (
 type defines map[string][]string
 
 var (
-	macroRegexp    = regexp.MustCompile(`\$\{\/?[^@]*?\}`)
-	embMacroRegexp = regexp.MustCompile(`\$\{\/?@\}`)
+	macroRegexp    = regexp.MustCompile(`\$\(\/?[^@]*?\)`)
+	embMacroRegexp = regexp.MustCompile(`\$\(\/?@\)`)
 )
 
 // set устанавливает значение макроопределения или добавляет новое.
