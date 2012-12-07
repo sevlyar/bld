@@ -103,3 +103,14 @@ func (conf *Config) store(path string) {
 
 	log.Printf("config %s stored\n", path)
 }
+
+// stringIndex ищет в списке указанную строку и возвращает ее индекс,
+// если такая строка отсутствует, тогда возвращается -1.
+func stringIndex(list []string, s string) int {
+	for i, l := range list {
+		if l == s {
+			return i
+		}
+	}
+	return -1
+}
