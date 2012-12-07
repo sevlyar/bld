@@ -1,78 +1,52 @@
 package main
 
 import (
+	"log"
 	"path/filepath"
 	"regexp"
 	"strings"
 )
 
-// Макрос ${name}
-// Предопределенные макросы
-// ${.} - целевой каталог
-// ${..} - каталог проекта
-// ${@} - подставляется полное имя обрабатываемого файла
-// ${*} - подставляются имена всех обрабатываемых файлов в текущем звене
-// ${/name} - модификатор, указывающий, что надо взять базовое имя и трактовать макрос как путь
-
 type defines map[string][]string
 
 var (
-	macroRegexp    = regexp.MustCompile(`\$\{\/?[^\.\{\}@]*\}`)
-	preMacroRegexp = regexp.MustCompile(`\$\{\/?(\.\.|\.)\}`)
-	embMacroRegexp = regexp.MustCompile(`\$\{\/?(\.\.|\.|@)\}`)
-
-	embeddedDefs = defines{
-		"..": []string{".."},
-		".":  []string{"."},
-		"@":  []string{"?"},
-		//"*":  []string{"?"},
-	}
+	macroRegexp    = regexp.MustCompile(`\$\{\/?[^@]*?\}`)
+	embMacroRegexp = regexp.MustCompile(`\$\{\/?@\}`)
 )
 
-func setRootDir(path string) {
-	embeddedDefs[".."][0] = path
+// set устанавливает значение макроопределения или добавляет новое.
+func (def defines) set(name, val string) {
+	def[name] = []string{val}
 }
-
-func setTargeDir(path string) {
-	embeddedDefs["."][0] = path
-}
-
-func setCurrentFiles(files []string) {
-	embeddedDefs["@"] = files
-}
-
-// func setCurrentFiles(files []string) {
-// 	embeddedDefs["*"] = files
-// }
 
 // Раскручивает определения, делая всевозможные подстановки.
 func (def defines) bootstrap() {
+	// для каждого макроопределения
 	for name, values := range def {
 		res := make([]string, 0, 64)
+		// для каждого значения в макроопределении
 		for _, val := range values {
-			res = append(res, def.substitute([]string{val}, macroRegexp)...)
+			// выполнить подстановку макровызовов
+			newVal := def.substitute([]string{val}, macroRegexp)
+			res = append(res, newVal...)
 		}
-		def[name] = substituteEmbDefs(res, true)
+		def[name] = res
 	}
 }
 
-func substituteEmbDefs(input []string, pre bool) []string {
-	re := embMacroRegexp
-	if pre {
-		re = preMacroRegexp
-	}
-
-	res := make([]string, 0, 64)
-	for _, val := range input {
-		res = append(res, embeddedDefs.substitute([]string{val}, re)...)
-	}
-	return res
+func substituteEmbDefs(input, sources []string) []string {
+	emb := defines{"@": sources}
+	return emb.substituteDefs(input, embMacroRegexp)
 }
 
 func (def defines) substituteUserDefs(input []string) []string {
+	return def.substituteDefs(input, macroRegexp)
+}
+
+func (def defines) substituteDefs(input []string, r *regexp.Regexp) []string {
 	res := make([]string, 0, 64)
 	for _, val := range input {
-		res = append(res, def.substitute([]string{val}, macroRegexp)...)
+		res = append(res, def.substitute([]string{val}, r)...)
 	}
 	return res
 }
@@ -81,6 +55,8 @@ func (def defines) substituteUserDefs(input []string) []string {
 // input должен содержать одинаковые макровызовы!
 // FIXME: сделать проверку зацикливания.
 func (def defines) substitute(input []string, re *regexp.Regexp) []string {
+	cached := input
+
 	for {
 		// выходные значения на каждой итерации
 		result := make([]string, 0, 16)
@@ -91,6 +67,11 @@ func (def defines) substitute(input []string, re *regexp.Regexp) []string {
 
 			if len(macroCall) == 0 {
 				result = append(result, str)
+
+				if cached[0] != input[0] {
+					log.Printf("macro: %s -> %v", cached, input)
+				}
+
 				return input
 			}
 
