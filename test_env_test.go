@@ -38,34 +38,41 @@ void f() {};
 #include <x.h>
 `),
 
-	"compile.json": []byte(`
+	"macro.json": []byte(`
 {
-  	"defs": { 
-        "COMPILE-MACRO-NAME": ["${MACRO-NAME}"]
-    },
-    "ops": [
-	    {
-	        "name": "operation-name",
-	        "descr": "operation description"
-	    }
-    ]
+  	"defs": {
+  		"-ALPHA": ["a", "b"],
+  		"-NUMB": ["1", "2"],
+  		"-AB": ["{-ALPHA}", "{-NUMB}"],
+        "-TEST-DEF": ["${.}/${..}/${-ALPHA}/${-NUMB}", "$${-AB}-$${-AB}"]
+    }
 }
 `),
 
-	"base.json": []byte(`
+	"list.json": []byte(`
 {
-	"combine": [ "compile.json" ],
-  	"defs": { 
-        "BASE-MACRO-NAME": ["a", "b"]
-    }
+	"combine": [ "macro.json" ],
+
+	"ops": [
+		{
+	        "name": "list-files",
+	        "descr": "list modified files",
+
+	        "sources": ".c",
+	        "dirs": ["${..}/${DIRS}"],
+
+	        "tool": "echo",
+	        "args": ["tool \"${@}\""]
+		}
+	]
 }
 `),
 
 	"build.json": []byte(`
 {
-	"combine": [ "base.json" ],
+	"combine": [ "list.json" ],
   	"defs": { 
-        "MACRO-NAME": ["${BASE-MACRO-NAME}"]
+        "DIRS": [".", "d"]
     }
 }
 `),
@@ -97,8 +104,14 @@ func TestCreateEnvironment(test *testing.T) {
 	if err := os.MkdirAll(bin, 0755); err != nil {
 		test.Fatal(FATAL_MSG, err)
 	}
-	// chdir
+
+	TestChdir(test)
+}
+
+func TestChdir(test *testing.T) {
+	const bin = "../../test/bin"
+
 	if err := os.Chdir(bin); err != nil {
-		test.Fatal(FATAL_MSG, err)
+		test.Fatal(err)
 	}
 }
