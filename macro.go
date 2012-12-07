@@ -55,31 +55,24 @@ func (def defines) substituteDefs(input []string, r *regexp.Regexp) []string {
 
 // Делает подстановки определений на места макровызовов.
 // input должен содержать одинаковые макровызовы!
-// FIXME: сделать проверку зацикливания.
 // FIXME: сделать input string
 func (def defines) substitute(input []string, re *regexp.Regexp) []string {
 	cached := input[0]
+	level := 0
 
 	for {
 		// выходные значения на каждой итерации
 		result := make([]string, 0, 16)
 
+		f := false
 		for _, str := range input {
 			// поиск макровызова
 			macroCall := re.FindString(str)
 
-			if len(macroCall) == 0 {
-				// expand enveronment				
-				for i, _ := range input {
-					input[i] = envMacroRegexp.ReplaceAllStringFunc(
-						input[i], getEnvVar)
-				}
-
-				if cached != input[0] {
-					log.Printf("macro: [%s] -> %v", cached, input)
-				}
-
-				return input
+			if len(macroCall) != 0 {
+				f = true
+			} else {
+				continue
 			}
 
 			// извлечение имени
@@ -110,7 +103,26 @@ func (def defines) substitute(input []string, re *regexp.Regexp) []string {
 			}
 		}
 
+		if !f {
+			// expand enveronment
+			for i, _ := range input {
+				input[i] = envMacroRegexp.ReplaceAllStringFunc(
+					input[i], getEnvVar)
+			}
+
+			if cached != input[0] {
+				log.Printf("macro L%d: [%s] -> %v", level, cached, input)
+			}
+
+			return input
+		}
+
 		input = result
+		level++
+
+		if level > macroLevel {
+			throw("cyclic reference in macro-call %s or depends", cached)
+		}
 	}
 
 	return input

@@ -10,15 +10,21 @@ import (
 )
 
 var (
-	verbose bool
+	verbose    bool
+	macroLevel int
 )
 
 func init() {
 	const (
-		usage_verbose = "enable verbose output"
+		usage_verbose    = "enable verbose output"
+		usage_macroLevel = "max level of macro"
 	)
+
 	flag.BoolVar(&verbose, "-verbose", false, usage_verbose)
 	flag.BoolVar(&verbose, "v", false, usage_verbose)
+
+	flag.IntVar(&macroLevel, "-level", 9, usage_macroLevel)
+	flag.IntVar(&macroLevel, "l", 9, usage_macroLevel)
 }
 
 // TODO: организовать хранение в репозитарии и обозначить направление развития
