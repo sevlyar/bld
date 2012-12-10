@@ -109,7 +109,7 @@ func (def defines) substitute(input []string, re *regexp.Regexp) []string {
 				input[i] = expandEnvVars(input[i])
 			}
 
-			if cached != input[0] {
+			if len(input) == 0 || cached != input[0] {
 				log.Printf("macro L%d: [%s] -> %v", level, cached, input)
 			}
 
@@ -137,9 +137,13 @@ func basePathModif(v []string) []string {
 }
 
 func getEnvVar(macro string) string {
-	return os.Getenv(macro[2 : len(macro)-1])
+	v := macro[2 : len(macro)-1]
+	value := os.Getenv(v)
+	log.Printf("os env: %s => %s", v, value)
+	return value
 }
 
 func expandEnvVars(s string) string {
-	return envMacroRegexp.ReplaceAllStringFunc(s, getEnvVar)
+	ex := envMacroRegexp.ReplaceAllStringFunc(s, getEnvVar)
+	return ex
 }

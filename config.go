@@ -23,7 +23,7 @@ func loadConfigs(path string, dir string) *Config {
 	root := readConfigFile(filepath.Join(dir, path))
 
 	for i := 0; i < len(root.Combine); i++ {
-		cnf := readConfigFile(filepath.Join(dir, root.Combine[i]))
+		cnf := readConfigFile(root.Combine[i])
 		root.combine(cnf)
 	}
 
@@ -58,6 +58,16 @@ func readConfigFile(path string) *Config {
 	}
 
 	conf.path = path
+
+	// вычисление относительных путей для подключаемых сценариев
+	for i, _ := range conf.Combine {
+		p := expandEnvVars(conf.Combine[i])
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(filepath.Dir(path), p)
+		}
+		conf.Combine[i] = p
+	}
+
 	return conf
 }
 
@@ -73,7 +83,6 @@ func (root *Config) combine(cnf *Config) {
 	log.Printf("combine config %s", cnf.path)
 
 	for _, s := range cnf.Combine {
-		s = expandEnvVars(s)
 		if stringIndex(root.Combine, s) < 0 {
 			root.Combine = append(root.Combine, s)
 		}
