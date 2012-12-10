@@ -106,8 +106,7 @@ func (def defines) substitute(input []string, re *regexp.Regexp) []string {
 		if !f {
 			// expand enveronment
 			for i, _ := range input {
-				input[i] = envMacroRegexp.ReplaceAllStringFunc(
-					input[i], getEnvVar)
+				input[i] = expandEnvVars(input[i])
 			}
 
 			if cached != input[0] {
@@ -139,4 +138,8 @@ func basePathModif(v []string) []string {
 
 func getEnvVar(macro string) string {
 	return os.Getenv(macro[2 : len(macro)-1])
+}
+
+func expandEnvVars(s string) string {
+	return envMacroRegexp.ReplaceAllStringFunc(s, getEnvVar)
 }

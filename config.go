@@ -73,6 +73,7 @@ func (root *Config) combine(cnf *Config) {
 	log.Printf("combine config %s", cnf.path)
 
 	for _, s := range cnf.Combine {
+		s = expandEnvVars(s)
 		if stringIndex(root.Combine, s) < 0 {
 			root.Combine = append(root.Combine, s)
 		}
